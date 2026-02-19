@@ -125,19 +125,20 @@
         </div>
     </div>
 
-    <!-- IMAGE PREVIEW -->
-<div id="imgModal" class="img-modal" onclick="closeImgModal(event)">
-    <div class="img-preview-box" onclick="event.stopPropagation()">
-        <img id="previewImage" src="" alt="Preview">
-        <div class="img-actions">
-            <button class="btn btn-secondary" onclick="closeImgModal(); clearSelectedImage();">Cancel</button>
-            <button class="btn btn-primary" onclick="sendImage()">Send Image</button>
+  <!-- IMAGE PREVIEW -->
+    <div id="imgModal" class="img-modal" onclick="closeImgModal(event)">
+        <div class="img-preview-box" onclick="event.stopPropagation()">
+            <img id="previewImage" src="" alt="Preview">
+            <div class="img-actions">
+                <button class="btn btn-secondary" onclick="closeImgModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="sendImage()">Send</button>
+            </div>
         </div>
     </div>
-</div>
 
     <script src="./css/type.js"></script>
 
 </body>
 </html>
+
 
