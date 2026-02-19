@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Chat Pro</title>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+
+    <!-- TOAST -->
+    <div id="toast" class="toast"></div>
+
+    <!-- SCREEN 1: HOME -->
+    <div id="homeScreen" class="screen active">
+        <div class="home">
+            <div class="brand">
+                <div class="logo">💬</div>
+                <h1 class="app-name">Dark Chat</h1>
+                <p class="app-tagline">Secure Private Messaging</p>
+            </div>
+
+            <div class="mode-grid">
+                <button class="mode-btn" onclick="openCreate()">
+                    <div class="mode-icon">⚡</div>
+                    <div>
+                        <div class="mode-title">Create Room</div>
+                        <div class="mode-desc">Generate new 4-digit code</div>
+                    </div>
+                </button>
+
+                <button class="mode-btn join" onclick="openJoin()">
+                    <div class="mode-icon">🔗</div>
+                    <div>
+                        <div class="mode-title">Join Room</div>
+                        <div class="mode-desc">Enter code to connect</div>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: CREATE ROOM -->
+    <div id="createModal" class="modal-overlay" onclick="closeModal(event, 'create')">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 class="modal-title">New Room Created</h3>
+                <button class="modal-close" onclick="closeModal(null, 'create')">×</button>
+            </div>
+            
+            <div class="code-show">
+                <div class="code-label">Your Room Code</div>
+                <div class="code-number" id="createdCode">----</div>
+            </div>
+            
+            <p class="copy-hint">Share this code with your friend</p>
+            
+            <button class="btn-primary" onclick="enterChat()" style="margin-top: 20px;">
+                Enter Chat Room →
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL: JOIN ROOM -->
+    <div id="joinModal" class="modal-overlay" onclick="closeModal(event, 'join')">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 class="modal-title">Join Room</h3>
+                <button class="modal-close" onclick="closeModal(null, 'join')">×</button>
+            </div>
+            
+            <div class="code-input-wrapper">
+                <input type="text" 
+                       class="code-input" 
+                       id="joinCodeInput" 
+                       maxlength="4" 
+                       placeholder="0000"
+                       oninput="validateCode(this)"
+                       autocomplete="off">
+            </div>
+            
+            <p class="error-msg" id="errorText">Invalid code. Please try again.</p>
+            
+            <button class="btn-primary" id="joinChatBtn" onclick="attemptJoin()" disabled>
+                Connect
+            </button>
+        </div>
+    </div>
+
+    <!-- SCREEN 2: CHAT -->
+    <div id="chatScreen" class="screen">
+        <div class="chat-header">
+            <button class="back-btn" onclick="leaveChat()">←</button>
+            <div class="user-avatar">👤</div>
+            <div class="chat-info">
+                <div class="chat-name">Anonymous User</div>
+                <div class="chat-status">
+                    <span class="status-dot"></span>
+                    <span>online</span>
+                </div>
+            </div>
+            <button class="chat-menu" onclick="clearChat()">🗑</button>
+        </div>
+
+        <div class="messages" id="messages">
+            <div class="system-notice">
+                <span class="line"></span>
+                🔒 End-to-end encrypted
+                <span class="line"></span>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-box">
+                <button class="attach-btn" onclick="document.getElementById('fileInput').click()">📎</button>
+                <input type="file" id="fileInput" hidden accept="image/*" onchange="selectImage(event)">
+                
+                <textarea id="msgInput" placeholder="Message..." rows="1" oninput="autoGrow(this)" onkeypress="handleKey(event)"></textarea>
+                
+                <button class="send-btn" onclick="sendMessage()">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- IMAGE PREVIEW -->
+    <div id="imgModal" class="img-modal" onclick="closeImgModal(event)">
+        <div class="img-preview-box" onclick="event.stopPropagation()">
+            <img id="previewImage" src="" alt="Preview">
+            <div class="img-actions">
+                <button class="btn btn-secondary" onclick="closeImgModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="sendImage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+  <script src="./css/type.js"></script>
+
+</body>
+</html>
