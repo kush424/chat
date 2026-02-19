@@ -2,13 +2,14 @@
 // FIREBASE CONFIGURATION - YAHAN APNI CONFIG DALEN
 // ==========================================
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-    projectId: "YOUR_PROJECT",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyB4h4Jv3x4aLgNxNXjeebefkcERVXlVMQI",
+  authDomain: "darkchatpro.firebaseapp.com",
+  databaseURL: "https://darkchatpro-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "darkchatpro",
+  storageBucket: "darkchatpro.firebasestorage.app",
+  messagingSenderId: "383770233335",
+  appId: "1:383770233335:web:59dddedefabb0a391786f2",
+  measurementId: "G-9XCZ62Z4C8"
 };
 
 // Initialize Firebase
@@ -24,7 +25,6 @@ let messagesRef = null;
 let typingRef = null;
 let presenceRef = null;
 let selectedImageFile = null;
-let selectedImageData = null; // For storing base64 data
 let isCreator = false;
 
 // Generate random user ID
@@ -53,7 +53,7 @@ function validateCode(input) {
 
 function autoGrow(textarea) {
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
+    textarea.style.height = textarea.scrollHeight + 'px';
 }
 
 function handleKey(e) {
@@ -99,6 +99,7 @@ function enterChat() {
 function attemptJoin() {
     const code = document.getElementById('joinCodeInput').value;
     
+    // Check if room exists in Firebase
     database.ref('rooms/' + code).once('value')
         .then((snapshot) => {
             if (snapshot.exists()) {
@@ -157,6 +158,7 @@ function setupPresence() {
                 joined: firebase.database.ServerValue.TIMESTAMP
             });
             
+            // Remove on disconnect
             userStatusRef.onDisconnect().remove();
         }
     });
@@ -169,28 +171,32 @@ function sendMessage() {
     const input = document.getElementById('msgInput');
     const text = input.value.trim();
     
-    // Check if text or image is present
-    if (!text && !selectedImageData) return;
+    if (!text && !selectedImageFile) return;
     
     const messageData = {
         userId: userId,
-        text: text || '',
+        text: text,
         timestamp: firebase.database.ServerValue.TIMESTAMP,
-        type: selectedImageData ? 'image' : 'text'
+        type: 'text'
     };
     
-    // If image is selected, add it to message
-    if (selectedImageData) {
-        messageData.image = selectedImageData;
+    // If image selected, upload first (simplified - using dataURL for demo)
+    if (selectedImageFile) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            messageData.image = e.target.result;
+            messageData.type = 'image';
+            pushMessage(messageData);
+        };
+        reader.readAsDataURL(selectedImageFile);
+        selectedImageFile = null;
+        closeImgModal();
+    } else {
+        pushMessage(messageData);
     }
     
-    // Push message to Firebase
-    pushMessage(messageData);
-    
-    // Clear input and image
     input.value = '';
     input.style.height = 'auto';
-    clearSelectedImage();
     
     // Clear typing indicator
     database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
@@ -199,6 +205,7 @@ function sendMessage() {
 function pushMessage(messageData) {
     database.ref('rooms/' + currentRoom + '/messages').push(messageData)
         .then(() => {
+            // Update last active
             database.ref('rooms/' + currentRoom).update({
                 lastActive: firebase.database.ServerValue.TIMESTAMP
             });
@@ -218,6 +225,7 @@ function listenForMessages() {
     });
     
     messagesRef.on('child_removed', (snapshot) => {
+        // Remove message from UI if deleted
         const msgElement = document.getElementById('msg-' + snapshot.key);
         if (msgElement) msgElement.remove();
     });
@@ -232,16 +240,9 @@ function displayMessage(message, messageId) {
     msgDiv.className = `message ${isMe ? 'sent' : 'received'}`;
     
     let content = '';
-    
-    // Handle image message
-    if (message.type === 'image' && message.image) {
-        content = `<img src="${message.image}" class="message-image" onclick="viewImage('${message.image}')" loading="lazy">`;
-        // Add text if present with image
-        if (message.text && message.text.trim()) {
-            content += `<div class="message-text" style="margin-top: 8px;">${escapeHtml(message.text)}</div>`;
-        }
+    if (message.type === 'image') {
+        content = `<img src="${message.image}" class="message-image" onclick="viewImage('${message.image}')">`;
     } else {
-        // Text only message
         content = `<div class="message-text">${escapeHtml(message.text)}</div>`;
     }
     
@@ -253,11 +254,6 @@ function displayMessage(message, messageId) {
     `;
     
     messagesDiv.appendChild(msgDiv);
-    scrollToBottom();
-}
-
-function scrollToBottom() {
-    const messagesDiv = document.getElementById('messages');
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
@@ -267,11 +263,10 @@ function addSystemMessage(text) {
     div.className = 'system-msg';
     div.innerHTML = `<span>${text}</span>`;
     messagesDiv.appendChild(div);
-    scrollToBottom();
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
 function escapeHtml(text) {
-    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -282,22 +277,19 @@ function escapeHtml(text) {
 // ==========================================
 let typingTimeout;
 const msgInput = document.getElementById('msgInput');
-
-if (msgInput) {
-    msgInput.addEventListener('input', () => {
-        if (!currentRoom) return;
-        
-        database.ref('rooms/' + currentRoom + '/typing/' + userId).set({
-            name: 'Anonymous',
-            timestamp: firebase.database.ServerValue.TIMESTAMP
-        });
-        
-        clearTimeout(typingTimeout);
-        typingTimeout = setTimeout(() => {
-            database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
-        }, 3000);
+msgInput.addEventListener('input', () => {
+    if (!currentRoom) return;
+    
+    database.ref('rooms/' + currentRoom + '/typing/' + userId).set({
+        name: 'Anonymous',
+        timestamp: firebase.database.ServerValue.TIMESTAMP
     });
-}
+    
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
+    }, 3000);
+});
 
 function listenForTyping() {
     const typingRef = database.ref('rooms/' + currentRoom + '/typing');
@@ -325,86 +317,36 @@ function listenForPresence() {
     usersRef.on('value', (snapshot) => {
         const users = snapshot.val();
         const count = users ? Object.keys(users).length : 0;
-        // Optional: Show user count
+        // You can show user count in UI if needed
     });
 }
 
 // ==========================================
-// IMAGE HANDLING - FIXED
+// IMAGE HANDLING
 // ==========================================
 function selectImage(event) {
     const file = event.target.files[0];
-    if (!file) {
-        console.log('No file selected');
-        return;
-    }
-    
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-        showToast('Please select an image file');
-        return;
-    }
-    
-    // Validate file size (max 2MB for Firebase performance)
-    if (file.size > 2 * 1024 * 1024) {
-        showToast('Image too large. Max 2MB allowed.');
-        event.target.value = '';
-        return;
-    }
+    if (!file) return;
     
     selectedImageFile = file;
     
     const reader = new FileReader();
-    
     reader.onload = (e) => {
-        selectedImageData = e.target.result; // Store base64 data
-        document.getElementById('previewImage').src = selectedImageData;
+        document.getElementById('previewImage').src = e.target.result;
         document.getElementById('imgModal').classList.add('active');
-        showToast('Image ready to send');
     };
-    
-    reader.onerror = (error) => {
-        console.error('FileReader error:', error);
-        showToast('Error loading image');
-        clearSelectedImage();
-    };
-    
     reader.readAsDataURL(file);
-}
-
-function clearSelectedImage() {
-    selectedImageFile = null;
-    selectedImageData = null;
-    document.getElementById('fileInput').value = '';
 }
 
 function closeImgModal() {
     document.getElementById('imgModal').classList.remove('active');
-    // Don't clear image data here, user might want to send after preview
-    setTimeout(() => {
-        if (!document.getElementById('imgModal').classList.contains('active')) {
-            clearSelectedImage();
-        }
-    }, 300);
+    selectedImageFile = null;
+    document.getElementById('fileInput').value = '';
 }
 
 function viewImage(src) {
     document.getElementById('previewImage').src = src;
     document.getElementById('imgModal').classList.add('active');
-}
-
-// Send image from modal
-function sendImage() {
-    if (!selectedImageData) {
-        showToast('No image selected');
-        return;
-    }
-    
-    // Close modal first
-    document.getElementById('imgModal').classList.remove('active');
-    
-    // Send message with image
-    sendMessage();
 }
 
 // ==========================================
@@ -422,10 +364,6 @@ function clearChat() {
                     </div>
                 `;
                 addSystemMessage('Chat cleared');
-            })
-            .catch((error) => {
-                console.error('Error clearing chat:', error);
-                showToast('Failed to clear chat');
             });
     }
 }
@@ -443,9 +381,6 @@ function leaveChat() {
     }
     
     currentRoom = null;
-    selectedImageData = null;
-    selectedImageFile = null;
-    
     document.getElementById('chatScreen').classList.remove('active');
     document.getElementById('homeScreen').classList.add('active');
     document.getElementById('messages').innerHTML = `
@@ -455,8 +390,6 @@ function leaveChat() {
             <span class="line"></span>
         </div>
     `;
-    document.getElementById('msgInput').value = '';
-    document.getElementById('msgInput').style.height = 'auto';
 }
 
 // Handle page unload
@@ -466,13 +399,3 @@ window.addEventListener('beforeunload', () => {
         database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
     }
 });
-
-// Prevent zoom on double tap (mobile)
-let lastTouchEnd = 0;
-document.addEventListener('touchend', (event) => {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 300) {
-        event.preventDefault();
-    }
-    lastTouchEnd = now;
-}, false);
