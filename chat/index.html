@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dark Chat Pro</title>
+    <title>Dark Chat Pro - Realtime</title>
     <link rel="stylesheet" href="./css/style.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -91,12 +94,12 @@
     <div id="chatScreen" class="screen">
         <div class="chat-header">
             <button class="back-btn" onclick="leaveChat()">←</button>
-            <div class="user-avatar">👤</div>
+            <div class="user-avatar" id="userAvatar">👤</div>
             <div class="chat-info">
-                <div class="chat-name">Anonymous User</div>
+                <div class="chat-name" id="chatRoomName">Room: ----</div>
                 <div class="chat-status">
                     <span class="status-dot"></span>
-                    <span>online</span>
+                    <span id="onlineStatus">online</span>
                 </div>
             </div>
             <button class="chat-menu" onclick="clearChat()">🗑</button>
@@ -133,7 +136,7 @@
         </div>
     </div>
 
-  <script src="./css/type.js"></script>
+    <script src="./css/type.js"></script>
 
 </body>
 </html>
