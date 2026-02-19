@@ -1,264 +1,361 @@
-        // ===== DATA STORE =====
-        // Real rooms storage (in-memory for demo)
-        const activeRooms = new Map(); // code -> {created: timestamp, messages: []}
-        let currentRoom = null;
-        let selectedImage = null;
-        let myMessages = []; // Track only my messages
+// ==========================================
+// FIREBASE CONFIGURATION - YAHAN APNI CONFIG DALEN
+// ==========================================
+const firebaseConfig = {
+  apiKey: "AIzaSyB4h4Jv3x4aLgNxNXjeebefkcERVXlVMQI",
+  authDomain: "darkchatpro.firebaseapp.com",
+  databaseURL: "https://darkchatpro-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "darkchatpro",
+  storageBucket: "darkchatpro.firebasestorage.app",
+  messagingSenderId: "383770233335",
+  appId: "1:383770233335:web:59dddedefabb0a391786f2",
+  measurementId: "G-9XCZ62Z4C8"
+};
 
-        // ===== SCREEN NAVIGATION =====
-        function showScreen(name) {
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById(name + 'Screen').classList.add('active');
-        }
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
 
-        // ===== MODAL FUNCTIONS =====
-        function openCreate() {
-            // Generate unique 4-digit code
-            let code;
-            do {
-                code = Math.floor(1000 + Math.random() * 9000).toString();
-            } while (activeRooms.has(code));
-            
-            // Create room
-            activeRooms.set(code, {
-                created: Date.now(),
-                messages: [],
-                members: 1
-            });
-            
-            currentRoom = code;
-            document.getElementById('createdCode').textContent = code;
-            document.getElementById('createModal').classList.add('active');
-        }
+// ==========================================
+// GLOBAL VARIABLES
+// ==========================================
+let currentRoom = null;
+let currentUser = null;
+let messagesRef = null;
+let typingRef = null;
+let presenceRef = null;
+let selectedImageFile = null;
+let isCreator = false;
 
-        function openJoin() {
-            document.getElementById('joinModal').classList.add('active');
+// Generate random user ID
+const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+
+// ==========================================
+// UTILITY FUNCTIONS
+// ==========================================
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function generateCode() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+function validateCode(input) {
+    input.value = input.value.replace(/[^0-9]/g, '');
+    const btn = document.getElementById('joinChatBtn');
+    btn.disabled = input.value.length !== 4;
+    document.getElementById('errorText').style.display = 'none';
+}
+
+function autoGrow(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+}
+
+function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+}
+
+// ==========================================
+// MODAL FUNCTIONS
+// ==========================================
+function openCreate() {
+    currentRoom = generateCode();
+    document.getElementById('createdCode').textContent = currentRoom;
+    document.getElementById('createModal').classList.add('active');
+    isCreator = true;
+}
+
+function openJoin() {
+    document.getElementById('joinModal').classList.add('active');
+    document.getElementById('joinCodeInput').focus();
+}
+
+function closeModal(event, type) {
+    if (!event || event.target.classList.contains('modal-overlay') || event.target.classList.contains('modal-close')) {
+        document.getElementById(type + 'Modal').classList.remove('active');
+        if (type === 'join') {
             document.getElementById('joinCodeInput').value = '';
-            document.getElementById('joinCodeInput').focus();
-            hideError();
+            document.getElementById('errorText').style.display = 'none';
         }
+    }
+}
 
-        function closeModal(e, type) {
-            if (e && e.target !== e.currentTarget) return;
-            document.getElementById(type + 'Modal').classList.remove('active');
-            if (type === 'join') {
-                document.getElementById('joinCodeInput').value = '';
-                hideError();
-            }
-        }
+// ==========================================
+// ROOM FUNCTIONS
+// ==========================================
+function enterChat() {
+    closeModal(null, 'create');
+    initializeChat();
+}
 
-        // ===== CODE VERIFICATION =====
-        function validateCode(input) {
-            // Only numbers
-            input.value = input.value.replace(/[^0-9]/g, '');
-            
-            // Enable button if 4 digits
-            const btn = document.getElementById('joinChatBtn');
-            btn.disabled = input.value.length !== 4;
-            
-            // Remove error styling on input
-            input.classList.remove('error');
-            hideError();
-        }
-
-        function showError() {
-            document.getElementById('errorText').classList.add('show');
-            document.getElementById('joinCodeInput').classList.add('error');
-        }
-
-        function hideError() {
-            document.getElementById('errorText').classList.remove('show');
-            document.getElementById('joinCodeInput').classList.remove('error');
-        }
-
-        function attemptJoin() {
-            const code = document.getElementById('joinCodeInput').value;
-            
-            // VERIFY: Check if room exists
-            if (!activeRooms.has(code)) {
-                showError();
-                // Shake animation
-                const input = document.getElementById('joinCodeInput');
-                input.style.animation = 'none';
-                setTimeout(() => input.style.animation = '', 10);
-                return;
-            }
-            
-            // SUCCESS: Join room
-            currentRoom = code;
-            const room = activeRooms.get(code);
-            room.members++;
-            
-            closeModal(null, 'join');
-            enterChat();
-            
-            // Load previous messages
-            loadMessages(room.messages);
-        }
-
-        // ===== CHAT FUNCTIONS =====
-        function enterChat() {
-            showScreen('chat');
-            showToast('Connected to room ' + currentRoom);
-            
-            // If joining existing room with messages, show them
-            if (activeRooms.has(currentRoom)) {
-                const room = activeRooms.get(currentRoom);
-                if (room.messages.length > 0) {
-                    loadMessages(room.messages);
-                }
-            }
-        }
-
-        function loadMessages(messages) {
-            const container = document.getElementById('messages');
-            // Clear except system notice
-            const systemNotice = container.querySelector('.system-notice');
-            container.innerHTML = '';
-            container.appendChild(systemNotice);
-            
-            messages.forEach(msg => {
-                displayMessage(msg.text, msg.isImage, msg.isMe, msg.time, false);
-            });
-        }
-
-        function sendMessage() {
-            const input = document.getElementById('msgInput');
-            const text = input.value.trim();
-            
-            if (!text || !currentRoom) return;
-            
-            // Save to room
-            const room = activeRooms.get(currentRoom);
-            const msgData = {
-                text: text,
-                isImage: false,
-                isMe: true,
-                time: Date.now()
-            };
-            room.messages.push(msgData);
-            
-            // Display
-            displayMessage(text, false, true);
-            
-            // Clear input
-            input.value = '';
-            input.style.height = 'auto';
-            
-            // NO AUTO-REPLY - Bas itna hi hota hai
-        }
-
-        function displayMessage(text, isImage, isMe, time = Date.now(), save = true) {
-            const container = document.getElementById('messages');
-            const timeStr = new Date(time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `message ${isMe ? 'sent' : 'received'}`;
-            
-            if (isImage) {
-                msgDiv.innerHTML = `
-                    <div class="msg-image" onclick="viewImage('${text}')">
-                        <img src="${text}" alt="Photo">
-                    </div>
-                    <div class="msg-meta">${timeStr}</div>
-                `;
+function attemptJoin() {
+    const code = document.getElementById('joinCodeInput').value;
+    
+    // Check if room exists in Firebase
+    database.ref('rooms/' + code).once('value')
+        .then((snapshot) => {
+            if (snapshot.exists()) {
+                currentRoom = code;
+                isCreator = false;
+                closeModal(null, 'join');
+                initializeChat();
             } else {
-                msgDiv.innerHTML = `
-                    <div class="bubble">${escapeHtml(text)}</div>
-                    <div class="msg-meta">
-                        ${timeStr}
-                        ${isMe ? '<span class="checks">✓✓</span>' : ''}
-                    </div>
-                `;
+                document.getElementById('errorText').style.display = 'block';
             }
-            
-            container.appendChild(msgDiv);
-            container.scrollTop = container.scrollHeight;
-            
-            // Save if new message
-            if (save && currentRoom) {
-                const room = activeRooms.get(currentRoom);
-                if (room) {
-                    room.messages.push({
-                        text, isImage, isMe, time
-                    });
-                }
-            }
-        }
+        })
+        .catch((error) => {
+            console.error("Error checking room:", error);
+            showToast("Connection error. Try again.");
+        });
+}
 
-        // ===== IMAGE HANDLING =====
-        function selectImage(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                selectedImage = evt.target.result;
-                document.getElementById('previewImage').src = selectedImage;
-                document.getElementById('imgModal').classList.add('active');
-            };
-            reader.readAsDataURL(file);
-        }
+function initializeChat() {
+    // Show chat screen
+    document.getElementById('homeScreen').classList.remove('active');
+    document.getElementById('chatScreen').classList.add('active');
+    document.getElementById('chatRoomName').textContent = 'Room: ' + currentRoom;
+    
+    // Create room in Firebase if not exists
+    database.ref('rooms/' + currentRoom).set({
+        created: firebase.database.ServerValue.TIMESTAMP,
+        lastActive: firebase.database.ServerValue.TIMESTAMP
+    });
+    
+    // Setup presence
+    setupPresence();
+    
+    // Listen for messages
+    listenForMessages();
+    
+    // Listen for typing indicators
+    listenForTyping();
+    
+    // Listen for presence
+    listenForPresence();
+    
+    // Add system message
+    addSystemMessage(isCreator ? 'You created room ' + currentRoom : 'You joined room ' + currentRoom);
+    
+    showToast(isCreator ? 'Room created! Share the code.' : 'Connected to room!');
+}
 
-        function sendImage() {
-            if (!selectedImage || !currentRoom) return;
-            
-            // Save to room
-            const room = activeRooms.get(currentRoom);
-            room.messages.push({
-                text: selectedImage,
-                isImage: true,
-                isMe: true,
-                time: Date.now()
+function setupPresence() {
+    const userStatusRef = database.ref('rooms/' + currentRoom + '/users/' + userId);
+    const connectedRef = database.ref('.info/connected');
+    
+    connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+            userStatusRef.set({
+                online: true,
+                joined: firebase.database.ServerValue.TIMESTAMP
             });
             
-            displayMessage(selectedImage, true, true);
-            closeImgModal();
+            // Remove on disconnect
+            userStatusRef.onDisconnect().remove();
         }
+    });
+}
 
-        function viewImage(src) {
-            document.getElementById('previewImage').src = src;
-            document.getElementById('imgModal').classList.add('active');
+// ==========================================
+// MESSAGE FUNCTIONS
+// ==========================================
+function sendMessage() {
+    const input = document.getElementById('msgInput');
+    const text = input.value.trim();
+    
+    if (!text && !selectedImageFile) return;
+    
+    const messageData = {
+        userId: userId,
+        text: text,
+        timestamp: firebase.database.ServerValue.TIMESTAMP,
+        type: 'text'
+    };
+    
+    // If image selected, upload first (simplified - using dataURL for demo)
+    if (selectedImageFile) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            messageData.image = e.target.result;
+            messageData.type = 'image';
+            pushMessage(messageData);
+        };
+        reader.readAsDataURL(selectedImageFile);
+        selectedImageFile = null;
+        closeImgModal();
+    } else {
+        pushMessage(messageData);
+    }
+    
+    input.value = '';
+    input.style.height = 'auto';
+    
+    // Clear typing indicator
+    database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
+}
+
+function pushMessage(messageData) {
+    database.ref('rooms/' + currentRoom + '/messages').push(messageData)
+        .then(() => {
+            // Update last active
+            database.ref('rooms/' + currentRoom).update({
+                lastActive: firebase.database.ServerValue.TIMESTAMP
+            });
+        })
+        .catch((error) => {
+            console.error("Error sending message:", error);
+            showToast("Failed to send message");
+        });
+}
+
+function listenForMessages() {
+    messagesRef = database.ref('rooms/' + currentRoom + '/messages');
+    
+    messagesRef.on('child_added', (snapshot) => {
+        const message = snapshot.val();
+        displayMessage(message, snapshot.key);
+    });
+    
+    messagesRef.on('child_removed', (snapshot) => {
+        // Remove message from UI if deleted
+        const msgElement = document.getElementById('msg-' + snapshot.key);
+        if (msgElement) msgElement.remove();
+    });
+}
+
+function displayMessage(message, messageId) {
+    const messagesDiv = document.getElementById('messages');
+    const isMe = message.userId === userId;
+    
+    const msgDiv = document.createElement('div');
+    msgDiv.id = 'msg-' + messageId;
+    msgDiv.className = `message ${isMe ? 'sent' : 'received'}`;
+    
+    let content = '';
+    if (message.type === 'image') {
+        content = `<img src="${message.image}" class="message-image" onclick="viewImage('${message.image}')">`;
+    } else {
+        content = `<div class="message-text">${escapeHtml(message.text)}</div>`;
+    }
+    
+    const time = new Date(message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    msgDiv.innerHTML = `
+        ${content}
+        <div class="message-time">${time}</div>
+    `;
+    
+    messagesDiv.appendChild(msgDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function addSystemMessage(text) {
+    const messagesDiv = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'system-msg';
+    div.innerHTML = `<span>${text}</span>`;
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ==========================================
+// TYPING INDICATORS
+// ==========================================
+let typingTimeout;
+const msgInput = document.getElementById('msgInput');
+msgInput.addEventListener('input', () => {
+    if (!currentRoom) return;
+    
+    database.ref('rooms/' + currentRoom + '/typing/' + userId).set({
+        name: 'Anonymous',
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    });
+    
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
+    }, 3000);
+});
+
+function listenForTyping() {
+    const typingRef = database.ref('rooms/' + currentRoom + '/typing');
+    typingRef.on('value', (snapshot) => {
+        const typing = snapshot.val();
+        if (!typing) {
+            document.getElementById('onlineStatus').textContent = 'online';
+            return;
         }
-
-        function closeImgModal(e) {
-            if (e && e.target !== e.currentTarget && !e.target.classList.contains('btn-secondary')) return;
-            document.getElementById('imgModal').classList.remove('active');
-            selectedImage = null;
-            document.getElementById('fileInput').value = '';
+        
+        const typers = Object.keys(typing).filter(id => id !== userId);
+        if (typers.length > 0) {
+            document.getElementById('onlineStatus').textContent = 'typing...';
+        } else {
+            document.getElementById('onlineStatus').textContent = 'online';
         }
+    });
+}
 
-        // ===== UTILITIES =====
-        function autoGrow(textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 100) + 'px';
-        }
+// ==========================================
+// PRESENCE / ONLINE STATUS
+// ==========================================
+function listenForPresence() {
+    const usersRef = database.ref('rooms/' + currentRoom + '/users');
+    usersRef.on('value', (snapshot) => {
+        const users = snapshot.val();
+        const count = users ? Object.keys(users).length : 0;
+        // You can show user count in UI if needed
+    });
+}
 
-        function handleKey(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        }
+// ==========================================
+// IMAGE HANDLING
+// ==========================================
+function selectImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    selectedImageFile = file;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        document.getElementById('previewImage').src = e.target.result;
+        document.getElementById('imgModal').classList.add('active');
+    };
+    reader.readAsDataURL(file);
+}
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
+function closeImgModal() {
+    document.getElementById('imgModal').classList.remove('active');
+    selectedImageFile = null;
+    document.getElementById('fileInput').value = '';
+}
 
-        function showToast(msg, isError = false) {
-            const toast = document.getElementById('toast');
-            toast.textContent = msg;
-            toast.className = 'toast' + (isError ? ' error' : '');
-            toast.classList.add('show');
-            
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
+function viewImage(src) {
+    document.getElementById('previewImage').src = src;
+    document.getElementById('imgModal').classList.add('active');
+}
 
-        function leaveChat() {
-            if (confirm('Leave chat? You can rejoin with code: ' + currentRoom)) {
-                currentRoom = null;
+// ==========================================
+// CHAT MANAGEMENT
+// ==========================================
+function clearChat() {
+    if (confirm('Clear all messages?')) {
+        database.ref('rooms/' + currentRoom + '/messages').remove()
+            .then(() => {
                 document.getElementById('messages').innerHTML = `
                     <div class="system-notice">
                         <span class="line"></span>
@@ -266,35 +363,39 @@
                         <span class="line"></span>
                     </div>
                 `;
-                showScreen('home');
-            }
-        }
+                addSystemMessage('Chat cleared');
+            });
+    }
+}
 
-        function clearChat() {
-            if (confirm('Clear all messages?')) {
-                if (currentRoom && activeRooms.has(currentRoom)) {
-                    activeRooms.get(currentRoom).messages = [];
-                }
-                document.getElementById('messages').innerHTML = `
-                    <div class="system-notice">
-                        <span class="line"></span>
-                        Chat cleared
-                        <span class="line"></span>
-                    </div>
-                `;
-            }
-        }
+function leaveChat() {
+    // Remove user from room
+    if (currentRoom) {
+        database.ref('rooms/' + currentRoom + '/users/' + userId).remove();
+        database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
+        
+        // Unsubscribe listeners
+        if (messagesRef) messagesRef.off();
+        if (typingRef) typingRef.off();
+        if (presenceRef) presenceRef.off();
+    }
+    
+    currentRoom = null;
+    document.getElementById('chatScreen').classList.remove('active');
+    document.getElementById('homeScreen').classList.add('active');
+    document.getElementById('messages').innerHTML = `
+        <div class="system-notice">
+            <span class="line"></span>
+            🔒 End-to-end encrypted
+            <span class="line"></span>
+        </div>
+    `;
+}
 
-        // Cleanup old rooms every 5 minutes
-        setInterval(() => {
-            const now = Date.now();
-            for (const [code, room] of activeRooms.entries()) {
-                // Remove rooms older than 1 hour with no members
-                if (now - room.created > 3600000 && room.members === 0) {
-                    activeRooms.delete(code);
-                }
-            }
-        }, 300000);
-
-        // Prevent accidental back
-        window.onbeforeunload = () => currentRoom ? 'Leave chat?' : null;
+// Handle page unload
+window.addEventListener('beforeunload', () => {
+    if (currentRoom) {
+        database.ref('rooms/' + currentRoom + '/users/' + userId).remove();
+        database.ref('rooms/' + currentRoom + '/typing/' + userId).remove();
+    }
+});
